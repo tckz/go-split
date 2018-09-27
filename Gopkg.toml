@@ -1,0 +1,12 @@
+[[constraint]]
+  name = "github.com/pkg/errors"
+  version = "v0.8.0"
+
+[[constraint]]
+  name = "github.com/stretchr/testify"
+  version = "v1.2.2"
+
+[[constraint]]
+  name = "github.com/dustin/go-humanize"
+  revision = "9f541cc9db5d55bce703bd99987c9d5cb8eea45e"
+

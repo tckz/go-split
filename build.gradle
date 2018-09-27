@@ -1,0 +1,28 @@
+// Just for running sonarqube task
+
+plugins {
+	id "org.sonarqube" version "2.6.2"
+}
+
+sonarqube {
+	// If SonarQube running on except http://localhost:9000/, 
+	// sonar.host.url should be defined in 
+	//   $HOME/.gradle/gradle.properties or
+	//   $GRADLE_USER_HOME/.gradle/gradle.properties
+	// like below
+	// systemProp.sonar.host.url=http://sonarqube.example.com:9000
+
+	// https://docs.sonarqube.org/display/PLUG/SonarGo
+	properties {
+		property "sonar.projectName", "go-split"
+		property "sonar.projectVersion", "1.0.0"
+		property "sonar.go.coverage.reportPaths", "reports/coverage.out"
+		//property "sonar.go.tests.reportPaths", "reports/test.json"
+
+		property "sonar.sources", "."
+		property "sonar.exclusions", "**/*_test.go,**/vendor/**"
+		property "sonar.tests", "."
+		property "sonar.test.inclusions", "**/*_test.go"
+		property "sonar.test.exclusions", "**/vendor/**"
+	}
+}
