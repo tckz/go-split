@@ -16,29 +16,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type cleanupFunc func()
-type CompressionType int
-
-const (
-	CompressionUnknown CompressionType = iota
-	CompressionNone
-	CompressionGzip
-)
-
-var compressionMap = map[string]CompressionType{
-	"":     CompressionNone,
-	"gzip": CompressionGzip,
-	"gz":   CompressionGzip,
-}
-
-func getCompressionType(compression string) CompressionType {
-	if t, ok := compressionMap[compression]; !ok {
-		return CompressionUnknown
-	} else {
-		return t
-	}
-}
-
 func decorateWriter(compression string, w io.Writer) (io.Writer, cleanupFunc, error) {
 	switch getCompressionType(compression) {
 	case CompressionNone:
@@ -77,11 +54,13 @@ func openInput(fn string) (io.Reader, cleanupFunc, error) {
 
 }
 
-type createWriter func(fn string, compress string) (io.Writer, cleanupFunc, error)
-type createReader func(fn string) (io.Reader, cleanupFunc, error)
-type mkdirAll func(path string, perm os.FileMode) error
+type service interface {
+	createWriter(fn string, compress string) (io.Writer, cleanupFunc, error)
+	createReader(fn string) (io.Reader, cleanupFunc, error)
+	mkdirAll(path string, perm os.FileMode) error
+}
 
-type SplitParam struct {
+type Param struct {
 	Verbose     *bool
 	Split       *int
 	Parallelism *int
@@ -90,53 +69,18 @@ type SplitParam struct {
 }
 
 type Splitter struct {
-	createReader createReader
-	createWriter createWriter
-	mkdirAll     mkdirAll
-	stderr       io.Writer
+	stderr io.Writer
+	svc    service
 }
 
 func NewSplitter() *Splitter {
 	return &Splitter{
-		stderr:   os.Stderr,
-		mkdirAll: os.MkdirAll,
-		createReader: func(fn string) (io.Reader, cleanupFunc, error) {
-			fp, cleanup1, err := openInput(fn)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "*** Failed to openInput")
-			}
-
-			r, cleanup2, err := decorateReader(fn, fp)
-			if err != nil {
-				defer cleanup1()
-				return nil, nil, errors.Wrapf(err, "*** Failed to decorateReader")
-			}
-			return r, func() {
-				defer cleanup1()
-				defer cleanup2()
-			}, nil
-		},
-		createWriter: func(fn string, compress string) (io.Writer, cleanupFunc, error) {
-			fp, err := os.Create(fn)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "*** Failed to Create")
-			}
-
-			w, cleanup, err := decorateWriter(compress, fp)
-			if err != nil {
-				defer fp.Close()
-				return nil, nil, errors.Wrapf(err, "*** Failed to decorateWriter")
-			}
-
-			return w, func() {
-				defer fp.Close()
-				defer cleanup()
-			}, nil
-		},
+		stderr: os.Stderr,
+		svc:    &serviceImpl{},
 	}
 }
 
-func (s *Splitter) Split(files []string, param SplitParam) {
+func (s *Splitter) Do(files []string, param Param) {
 
 	// goroutines for output
 	chLine := make(chan string, *param.Split)
@@ -152,14 +96,14 @@ func (s *Splitter) Split(files []string, param SplitParam) {
 
 		fn := fmt.Sprintf("%s%03d%s", *param.Prefix, i, suffix)
 		dir := path.Dir(fn)
-		if err := s.mkdirAll(dir, os.ModePerm); err != nil {
+		if err := s.svc.mkdirAll(dir, os.ModePerm); err != nil {
 			log.Fatalf("*** Failed to mkdirAll: %v", err)
 		}
 
 		go func() {
 			defer wgWrite.Done()
 
-			w, cleanup, err := s.createWriter(fn, *param.Compress)
+			w, cleanup, err := s.svc.createWriter(fn, *param.Compress)
 			if err != nil {
 				log.Fatalf("*** Failed to createWriter: %v", err)
 			}
@@ -187,7 +131,7 @@ func (s *Splitter) Split(files []string, param SplitParam) {
 				}
 
 				func() {
-					r, cleanup, err := s.createReader(fn)
+					r, cleanup, err := s.svc.createReader(fn)
 					if err != nil {
 						log.Fatalf("*** Failed to OpenReader: %v", err)
 					}
@@ -221,4 +165,49 @@ func (s *Splitter) Split(files []string, param SplitParam) {
 
 	close(chLine)
 	wgWrite.Wait()
+}
+
+type serviceImpl struct{}
+
+func (s *serviceImpl) createReader(fn string) (io.Reader, cleanupFunc, error) {
+	cleanups := &cleanups{}
+
+	fp, cleanup1, err := openInput(fn)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "*** Failed to openInput")
+	}
+	cleanups.add(func() { cleanup1() })
+
+	r, cleanup2, err := decorateReader(fn, fp)
+	if err != nil {
+		defer cleanups.do()
+		return nil, nil, errors.Wrapf(err, "*** Failed to decorateReader")
+	}
+	cleanups.add(func() { cleanup2() })
+
+	return r, func() { cleanups.do() }, nil
+}
+
+func (s *serviceImpl) mkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
+func (s *serviceImpl) createWriter(fn string, compress string) (io.Writer, cleanupFunc, error) {
+
+	cleanups := &cleanups{}
+
+	fp, err := os.Create(fn)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "*** Failed to Create")
+	}
+	cleanups.add(func() { fp.Close() })
+
+	w, cleanup, err := decorateWriter(compress, fp)
+	if err != nil {
+		defer cleanups.do()
+		return nil, nil, errors.Wrapf(err, "*** Failed to decorateWriter")
+	}
+	cleanups.add(func() { cleanup() })
+
+	return w, func() { cleanups.do() }, nil
 }

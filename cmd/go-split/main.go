@@ -19,7 +19,7 @@ var usage = func() {
 func main() {
 	optVersion := flag.Bool("version", false, "Show version")
 
-	param := split.SplitParam{}
+	param := split.Param{}
 	param.Verbose = flag.Bool("verbose", false, "Verbose output")
 	param.Split = flag.Int("split", 8, "Number of files that splitted")
 	param.Prefix = flag.String("prefix", "out-", "Path prefix of outputs")
@@ -53,5 +53,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	split.NewSplitter().Split(files, param)
+	split.NewSplitter().Do(files, param)
 }
