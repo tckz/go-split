@@ -11,6 +11,7 @@ const (
 
 var compressionMap = map[string]CompressionType{
 	"":     CompressionNone,
+	"none": CompressionNone,
 	"gzip": CompressionGzip,
 	"gz":   CompressionGzip,
 }

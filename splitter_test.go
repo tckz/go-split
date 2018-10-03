@@ -2,7 +2,9 @@ package split
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
+	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -115,4 +117,80 @@ line3
 	assert.Equal(t, `in/file0
 in/file0, total=3
 `, stderr.String())
+}
+
+func TestOpenInput1(t *testing.T) {
+	r, cleanup, err := openInput("/dev/null")
+	assert.Nil(t, err)
+	defer cleanup()
+	_, ok := r.(*os.File)
+	assert.True(t, ok)
+}
+
+func TestOpenInput2(t *testing.T) {
+	r, cleanup, err := openInput("-")
+	assert.Nil(t, err)
+	defer cleanup()
+	assert.True(t, os.Stdin == r)
+}
+
+func TestDecorateReaderNoCompression(t *testing.T) {
+	r, cleanup, err := openInput("-")
+	assert.Nil(t, err)
+	defer cleanup()
+
+	reader, cleanup, err := decorateReader("plain.txt", r)
+	assert.Nil(t, err)
+	defer cleanup()
+
+	assert.True(t, r == reader)
+}
+
+func TestDecorateReaderGzip(t *testing.T) {
+	buf := bytes.NewBuffer([]byte{})
+	w := gzip.NewWriter(buf)
+	defer w.Close()
+	w.Write([]byte("aaa"))
+	w.Close()
+
+	r := bytes.NewReader(buf.Bytes())
+
+	reader, cleanup, err := decorateReader("path/to/some.tsv.gz", r)
+	assert.Nil(t, err)
+	defer cleanup()
+
+	_, ok := reader.(*gzip.Reader)
+	assert.True(t, ok)
+
+	content, err := ioutil.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.Equal(t, "aaa", string(content))
+
+}
+
+func TestDecorateWriterNone(t *testing.T) {
+	buf := bytes.NewBuffer([]byte{})
+	w, cleanup, err := decorateWriter("none", buf)
+	assert.Nil(t, err)
+	defer cleanup()
+
+	assert.True(t, buf == w)
+}
+
+func TestDecorateWriterGzip(t *testing.T) {
+	buf := bytes.NewBuffer([]byte{})
+	w, cleanup, err := decorateWriter("gzip", buf)
+	assert.Nil(t, err)
+	defer cleanup()
+
+	_, ok := w.(*gzip.Writer)
+	assert.True(t, ok)
+}
+
+func TestDecorateWriterUnknown(t *testing.T) {
+	buf := bytes.NewBuffer([]byte{})
+	w, cleanup, err := decorateWriter("lzo", buf)
+	assert.NotNil(t, err)
+	assert.Nil(t, w)
+	assert.Nil(t, cleanup)
 }

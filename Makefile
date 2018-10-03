@@ -16,7 +16,7 @@ clean:
 	@echo "$@ done."
 
 test:
-	go test -v -coverprofile=reports/coverage.out -json > reports/test.json
+	go test -coverprofile=reports/coverage.out -json > reports/test.json
 	@echo "$@ done."
 
 go-split: cmd/go-split/main.go $(SRCS_OTHER)
