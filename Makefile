@@ -6,7 +6,8 @@ TARGETS=\
 
 SRCS_OTHER = \
 	$(wildcard */*.go) \
-	$(wildcard *.go)
+	$(wildcard *.go) \
+	go.mod
 
 all: $(TARGETS)
 	@echo "$@ done."
@@ -16,11 +17,11 @@ clean:
 	@echo "$@ done."
 
 test:
-	go test -coverprofile=reports/coverage.out -json > reports/test.json
+	GO111MODULE=on go test -coverprofile=reports/coverage.out -json > reports/test.json
 	@echo "$@ done."
 
 go-split: cmd/go-split/main.go $(SRCS_OTHER)
-	go build -o $@ -ldflags "-X main.version=`git describe --tags --always`" $<
+	GO111MODULE=on go build -o $@ -ldflags "-X main.version=`git describe --tags --always`" $<
 	@echo "$@ done."
 
 
