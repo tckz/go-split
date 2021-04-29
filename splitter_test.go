@@ -3,6 +3,7 @@ package split
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"io/ioutil"
 	"os"
@@ -60,7 +61,7 @@ line3
 
 	s.svc = mock
 
-	s.Do([]string{
+	s.Do(context.Background(), []string{
 		"in/file0",
 	}, param)
 
@@ -105,7 +106,7 @@ line3
 
 	s.svc = mock
 
-	s.Do([]string{
+	s.Do(context.Background(), []string{
 		"in/file0",
 	}, param)
 

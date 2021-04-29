@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path"
 
@@ -53,5 +55,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	split.NewSplitter().Do(files, param)
+	err := split.NewSplitter().Do(context.Background(), files, param)
+	if err != nil {
+		log.Printf("*** Splitter.Do: %v", err)
+	}
 }

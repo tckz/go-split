@@ -1,9 +1,12 @@
 package split
 
+import "sync"
+
 type cleanupFunc func()
 
 type cleanups struct {
 	funcs []cleanupFunc
+	once  sync.Once
 }
 
 func (c *cleanups) add(f cleanupFunc) {
@@ -11,7 +14,9 @@ func (c *cleanups) add(f cleanupFunc) {
 }
 
 func (c *cleanups) do() {
-	for _, f := range c.funcs {
-		defer f()
-	}
+	c.once.Do(func() {
+		for _, f := range c.funcs {
+			defer f()
+		}
+	})
 }

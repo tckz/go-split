@@ -1,6 +1,6 @@
 package split
 
-//go:generate stringer -type=CompressionType compression_type.go
+//go:generate stringer -type=CompressionType $GOFILE
 type CompressionType int
 
 const (
@@ -9,17 +9,22 @@ const (
 	CompressionGzip
 )
 
-var compressionMap = map[string]CompressionType{
-	"":     CompressionNone,
-	"none": CompressionNone,
-	"gzip": CompressionGzip,
-	"gz":   CompressionGzip,
+type compressionTypeInfo struct {
+	id        CompressionType
+	extension string
 }
 
-func getCompressionType(compression string) CompressionType {
+var compressionMap = map[string]compressionTypeInfo{
+	"":     {CompressionNone, ""},
+	"none": {CompressionNone, ""},
+	"gzip": {CompressionGzip, ".gz"},
+	"gz":   {CompressionGzip, ".gz"},
+}
+
+func getCompressionType(compression string) (CompressionType, string) {
 	if t, ok := compressionMap[compression]; !ok {
-		return CompressionUnknown
+		return CompressionUnknown, ""
 	} else {
-		return t
+		return t.id, t.extension
 	}
 }

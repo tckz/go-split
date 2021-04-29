@@ -23,26 +23,21 @@ Usage: go-split [options] input-file...
 
 ## Requirements
 
-* Go 1.11
-* dep
-* stringer
-* GNU make
+* Go 1.15
+* GNU Make
 
 ## Prerequisites
 
-* Install dep  
-  https://golang.github.io/dep/docs/installation.html
-* Install stringer
-  ```bash
-  $ go get golang.org/x/tools/cmd/stringer
+* Install stringer project locally.
+  ```
+  $ make tools
   ```
 
 ## Build
 
-```bash
-$ dep ensure
-$ go generate
+```
 $ make
+# -> go-split
 ```
 
 # License
@@ -53,7 +48,6 @@ SEE LICENSE
 
 # My Environment
 
-* CentOS 7.5
-* Go 1.11
-* dep 0.5.0
-* GNU make 3.82
+* CentOS 8.3.2011
+* Go 1.15.11
+* GNU Make 4.2.1
