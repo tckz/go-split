@@ -61,11 +61,11 @@ type service interface {
 }
 
 type Param struct {
-	Verbose     *bool
-	Split       *int
-	Parallelism *int
-	Prefix      *string
-	Compress    *string
+	Verbose     bool
+	Split       int
+	Parallelism int
+	Prefix      string
+	Compress    string
 }
 
 type Splitter struct {
@@ -92,14 +92,14 @@ func (s *Splitter) Do(ctx context.Context, files []string, param Param) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	chLine := make(chan line, *param.Parallelism)
+	chLine := make(chan line, param.Parallelism)
 
-	egWrite, err := s.ParallelWrite(ctx, chLine, *param.Split, param)
+	egWrite, err := s.ParallelWrite(ctx, cancel, chLine, param.Split, param)
 	if err != nil {
 		return fmt.Errorf("ParallelWrite: %w", err)
 	}
 
-	egScan, err := s.ParallelFileScan(ctx, files, *param.Parallelism, param, chLine)
+	egScan, err := s.ParallelFileScan(ctx, cancel, files, param.Parallelism, param, chLine)
 	if err != nil {
 		return fmt.Errorf("ParallelFileScan: %w", err)
 	}
@@ -116,20 +116,26 @@ func (s *Splitter) Do(ctx context.Context, files []string, param Param) error {
 	return nil
 }
 
-func (s *Splitter) ParallelWrite(ctx context.Context, chIn <-chan line, parallelism int, param Param) (*errgroup.Group, error) {
+func (s *Splitter) ParallelWrite(ctx context.Context, cancel func(), chIn <-chan line, parallelism int, param Param) (*errgroup.Group, error) {
 
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < parallelism; i++ {
-		_, suffix := getCompressionType(*param.Compress)
+		_, suffix := getCompressionType(param.Compress)
 
-		fn := fmt.Sprintf("%s%03d%s", *param.Prefix, i, suffix)
+		fn := fmt.Sprintf("%s%03d%s", param.Prefix, i, suffix)
 		dir := path.Dir(fn)
 		if err := s.svc.mkdirAll(dir, os.ModePerm); err != nil {
 			return nil, fmt.Errorf("mkdirAll: %w", err)
 		}
 
-		eg.Go(func() error {
-			w, cleanup, err := s.svc.createWriter(fn, *param.Compress)
+		eg.Go(func() (retErr error) {
+			defer func() {
+				if retErr != nil {
+					cancel()
+				}
+			}()
+
+			w, cleanup, err := s.svc.createWriter(fn, param.Compress)
 			if err != nil {
 				return fmt.Errorf("createWriter: %w", err)
 			}
@@ -154,10 +160,16 @@ func (s *Splitter) ParallelWrite(ctx context.Context, chIn <-chan line, parallel
 	return eg, nil
 }
 
-func (s *Splitter) ParallelScan(ctx context.Context, chIn <-chan readTarget, parallelism int, param Param, chOut chan<- line) (*errgroup.Group, error) {
+func (s *Splitter) ParallelScan(ctx context.Context, cancel func(), chIn <-chan readTarget, parallelism int, param Param, chOut chan<- line) (*errgroup.Group, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < parallelism; i++ {
-		eg.Go(func() error {
+		eg.Go(func() (retErr error) {
+			defer func() {
+				if retErr != nil {
+					cancel()
+				}
+			}()
+
 			for tg := range chIn {
 				lc := int64(0)
 				scanner := bufio.NewScanner(tg.r)
@@ -165,19 +177,17 @@ func (s *Splitter) ParallelScan(ctx context.Context, chIn <-chan readTarget, par
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
-					default:
-					}
-
-					chOut <- line(scanner.Text())
-					lc++
-					if *param.Verbose && lc%10000 == 0 {
-						fmt.Fprintf(s.stderr, "%s, line=%s\n", tg.description, humanize.Comma(lc))
+					case chOut <- line(scanner.Text()):
+						lc++
+						if param.Verbose && lc%10000 == 0 {
+							fmt.Fprintf(s.stderr, "%s, line=%s\n", tg.description, humanize.Comma(lc))
+						}
 					}
 				}
 				if err := scanner.Err(); err != nil {
 					return fmt.Errorf("Scan: %w", err)
 				}
-				if *param.Verbose {
+				if param.Verbose {
 					fmt.Fprintf(s.stderr, "%s, total=%s\n", tg.description, humanize.Comma(lc))
 				}
 			}
@@ -188,29 +198,37 @@ func (s *Splitter) ParallelScan(ctx context.Context, chIn <-chan readTarget, par
 	return eg, nil
 }
 
-func (s *Splitter) ParallelFileScan(ctx context.Context, files []string, parallelism int, param Param, chOut chan<- line) (*errgroup.Group, error) {
+func (s *Splitter) ParallelFileScan(ctx context.Context, cancel func(), files []string, parallelism int, param Param, chOut chan<- line) (_ *errgroup.Group, retErr error) {
 	chTarget := make(chan readTarget, parallelism)
 
-	egScan, err := s.ParallelScan(ctx, chTarget, parallelism, param, chOut)
+	egScan, err := s.ParallelScan(ctx, cancel, chTarget, parallelism, param, chOut)
 	if err != nil {
 		return nil, fmt.Errorf("ParallelScan: %w", err)
 	}
 
 	cleanups := cleanups{}
+	defer func() {
+		if retErr != nil {
+			cleanups.do()
+		}
+	}()
 	for _, fn := range files {
-		if *param.Verbose {
+		if param.Verbose {
 			fmt.Fprintf(s.stderr, "%s\n", fn)
 		}
 		r, cleanup, err := s.svc.createReader(fn)
 		if err != nil {
-			cleanups.do()
 			return nil, fmt.Errorf("createReader: %w", err)
 		}
 		cleanups.add(cleanup)
 
-		chTarget <- readTarget{
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case chTarget <- readTarget{
 			r:           r,
 			description: fn,
+		}:
 		}
 	}
 	close(chTarget)
@@ -226,8 +244,13 @@ func (s *Splitter) ParallelFileScan(ctx context.Context, files []string, paralle
 
 type serviceImpl struct{}
 
-func (s *serviceImpl) createReader(fn string) (io.Reader, cleanupFunc, error) {
+func (s *serviceImpl) createReader(fn string) (_ io.Reader, _ cleanupFunc, retErr error) {
 	cleanups := &cleanups{}
+	defer func() {
+		if retErr != nil {
+			cleanups.do()
+		}
+	}()
 
 	fp, cleanup1, err := openInput(fn)
 	if err != nil {
@@ -237,7 +260,6 @@ func (s *serviceImpl) createReader(fn string) (io.Reader, cleanupFunc, error) {
 
 	r, cleanup2, err := decorateReader(fn, fp)
 	if err != nil {
-		defer cleanups.do()
 		return nil, nil, fmt.Errorf("decorateReader: %w", err)
 	}
 	cleanups.add(func() { cleanup2() })

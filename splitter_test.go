@@ -31,11 +31,11 @@ func (m *serviceMock) mkdirAll(path string, perm os.FileMode) error {
 
 func TestSplit1(t *testing.T) {
 	param := Param{
-		Verbose:     Bool(false),
-		Split:       Int(1),
-		Parallelism: Int(1),
-		Prefix:      String("out/file-"),
-		Compress:    String(""),
+		Verbose:     false,
+		Split:       1,
+		Parallelism: 1,
+		Prefix:      "out/file-",
+		Compress:    "",
 	}
 
 	s := NewSplitter()
@@ -73,11 +73,11 @@ line3
 
 func TestSplit2(t *testing.T) {
 	param := Param{
-		Verbose:     Bool(true),
-		Split:       Int(1),
-		Parallelism: Int(1),
-		Prefix:      String("out/file-"),
-		Compress:    String("gzip"),
+		Verbose:     true,
+		Split:       1,
+		Parallelism: 1,
+		Prefix:      "out/file-",
+		Compress:    "gzip",
 	}
 
 	s := NewSplitter()

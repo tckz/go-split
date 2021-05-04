@@ -22,11 +22,11 @@ func main() {
 	optVersion := flag.Bool("version", false, "Show version")
 
 	param := split.Param{}
-	param.Verbose = flag.Bool("verbose", false, "Verbose output")
-	param.Split = flag.Int("split", 8, "Number of files that splitted")
-	param.Prefix = flag.String("prefix", "out-", "Path prefix of outputs")
-	param.Compress = flag.String("compress", "none", "{gzip|none=without compression}")
-	param.Parallelism = flag.Int("parallelism", 4, "Maximum number of files which read parallely")
+	flag.BoolVar(&param.Verbose, "verbose", false, "Verbose output")
+	flag.IntVar(&param.Split, "split", 8, "Number of files that splitted")
+	flag.StringVar(&param.Prefix, "prefix", "out-", "Path prefix of outputs")
+	flag.StringVar(&param.Compress, "compress", "none", "{gzip|none=without compression}")
+	flag.IntVar(&param.Parallelism, "parallelism", 4, "Maximum number of files which read parallely")
 
 	flag.Usage = usage
 	flag.Parse()
@@ -43,13 +43,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *param.Parallelism <= 0 {
+	if param.Parallelism <= 0 {
 		usage()
 		fmt.Fprintf(os.Stderr, "*** --parallelism must be >= 1")
 		os.Exit(1)
 	}
 
-	if *param.Split <= 0 {
+	if param.Split <= 0 {
 		usage()
 		fmt.Fprintf(os.Stderr, "*** --split must be >= 1")
 		os.Exit(1)
