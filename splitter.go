@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var nop = func() {}
+
 func decorateWriter(compression string, w io.Writer) (io.Writer, cleanupFunc, error) {
 	ct, _ := getCompressionType(compression)
 	switch ct {
@@ -116,7 +118,12 @@ func (s *Splitter) Do(ctx context.Context, files []string, param Param) error {
 	return nil
 }
 
-func (s *Splitter) ParallelWrite(ctx context.Context, cancel func(), chIn <-chan line, parallelism int, param Param) (*errgroup.Group, error) {
+func (s *Splitter) ParallelWrite(ctx context.Context, cancel func(), chIn <-chan line, parallelism int, param Param) (_ *errgroup.Group, retErr error) {
+	defer func() {
+		if retErr != nil {
+			cancel()
+		}
+	}()
 
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < parallelism; i++ {
@@ -160,7 +167,13 @@ func (s *Splitter) ParallelWrite(ctx context.Context, cancel func(), chIn <-chan
 	return eg, nil
 }
 
-func (s *Splitter) ParallelScan(ctx context.Context, cancel func(), chIn <-chan readTarget, parallelism int, param Param, chOut chan<- line) (*errgroup.Group, error) {
+func (s *Splitter) ParallelScan(ctx context.Context, cancel func(), chIn <-chan readTarget, parallelism int, param Param, chOut chan<- line) (_ *errgroup.Group, retErr error) {
+	defer func() {
+		if retErr != nil {
+			cancel()
+		}
+	}()
+
 	eg, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < parallelism; i++ {
 		eg.Go(func() (retErr error) {
@@ -199,6 +212,14 @@ func (s *Splitter) ParallelScan(ctx context.Context, cancel func(), chIn <-chan 
 }
 
 func (s *Splitter) ParallelFileScan(ctx context.Context, cancel func(), files []string, parallelism int, param Param, chOut chan<- line) (_ *errgroup.Group, retErr error) {
+	cleanups := cleanups{}
+	defer func() {
+		if retErr != nil {
+			defer cancel()
+			cleanups.do()
+		}
+	}()
+
 	chTarget := make(chan readTarget, parallelism)
 
 	egScan, err := s.ParallelScan(ctx, cancel, chTarget, parallelism, param, chOut)
@@ -206,12 +227,6 @@ func (s *Splitter) ParallelFileScan(ctx context.Context, cancel func(), files []
 		return nil, fmt.Errorf("ParallelScan: %w", err)
 	}
 
-	cleanups := cleanups{}
-	defer func() {
-		if retErr != nil {
-			cleanups.do()
-		}
-	}()
 	for _, fn := range files {
 		if param.Verbose {
 			fmt.Fprintf(s.stderr, "%s\n", fn)
@@ -234,8 +249,13 @@ func (s *Splitter) ParallelFileScan(ctx context.Context, cancel func(), files []
 	close(chTarget)
 
 	eg, _ := errgroup.WithContext(ctx)
-	eg.Go(func() error {
+	eg.Go(func() (retErr error) {
 		defer cleanups.do()
+		defer func() {
+			if retErr != nil {
+				cancel()
+			}
+		}()
 		return egScan.Wait()
 	})
 
@@ -271,9 +291,13 @@ func (s *serviceImpl) mkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
-func (s *serviceImpl) createWriter(fn string, compress string) (io.Writer, cleanupFunc, error) {
-
+func (s *serviceImpl) createWriter(fn string, compress string) (_ io.Writer, _ cleanupFunc, retErr error) {
 	cleanups := &cleanups{}
+	defer func() {
+		if retErr != nil {
+			cleanups.do()
+		}
+	}()
 
 	fp, err := os.Create(fn)
 	if err != nil {
@@ -283,7 +307,6 @@ func (s *serviceImpl) createWriter(fn string, compress string) (io.Writer, clean
 
 	w, cleanup, err := decorateWriter(compress, fp)
 	if err != nil {
-		defer cleanups.do()
 		return nil, nil, fmt.Errorf("decorateWriter: %w", err)
 	}
 	cleanups.add(func() { cleanup() })
