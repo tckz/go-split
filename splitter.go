@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/hashicorp/go-multierror"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -89,7 +90,7 @@ type readTarget struct {
 	description string
 }
 
-func (s *Splitter) Do(ctx context.Context, files []string, param Param) error {
+func (s *Splitter) Do(ctx context.Context, files []string, param Param) (retErr error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -103,19 +104,19 @@ func (s *Splitter) Do(ctx context.Context, files []string, param Param) error {
 
 	egScan, err := s.ParallelFileScan(ctx, cancel, files, param.Parallelism, param, chLine)
 	if err != nil {
-		return fmt.Errorf("ParallelFileScan: %w", err)
+		retErr = multierror.Append(retErr, fmt.Errorf("ParallelFileScan: %w", err))
 	}
 
 	if err := egScan.Wait(); err != nil {
-		return fmt.Errorf("ParallelFileScan.Wait: %w", err)
+		retErr = multierror.Append(retErr, fmt.Errorf("ParallelFileScan.Wait: %w", err))
 	}
 	close(chLine)
 
 	if err := egWrite.Wait(); err != nil {
-		return fmt.Errorf("ParallelWrite.Wait: %w", err)
+		retErr = multierror.Append(retErr, fmt.Errorf("ParallelWrite.Wait: %w", err))
 	}
 
-	return nil
+	return retErr
 }
 
 func (s *Splitter) ParallelWrite(ctx context.Context, cancel func(), chIn <-chan line, parallelism int, param Param) (_ *errgroup.Group, retErr error) {
