@@ -1,7 +1,5 @@
 .PHONY: dist test clean all
 
-export GO111MODULE=on
-
 ifeq ($(GO_CMD),)
 GO_CMD:=go
 endif
@@ -19,9 +17,11 @@ SRCS_OTHER := $(shell find . \
 DIR_BIN := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))/bin
 
 TOOL_STRINGER = $(DIR_BIN)/stringer
+TOOL_STATICCHECK = $(DIR_BIN)/staticcheck
 
 TOOLS = \
-	$(TOOL_STRINGER)
+	$(TOOL_STRINGER) \
+	$(TOOL_STATICCHECK)
 
 all: $(TARGETS)
 	@echo "$@ done." 1>&2
@@ -48,16 +48,26 @@ sonar: test-detail
 tools: $(TOOLS)
 	@echo "$@ done." 1>&2
 
+.PHONY: lint
+lint: $(TOOL_STATICCHECK)
+	$(TOOL_STATICCHECK) ./...
+
+$(TOOL_STATICCHECK): export GOBIN=$(DIR_BIN)
+$(TOOL_STATICCHECK): $(TOOLS_DEP)
+	@echo "### `basename $@` install destination=$(GOBIN)" 1>&2
+	CGO_ENABLED=0 $(GO_CMD) install honnef.co/go/tools/cmd/staticcheck@v0.4.7
+
 $(TOOL_STRINGER): export GOBIN=$(DIR_BIN)
 $(TOOL_STRINGER): Makefile
 	@echo "### `basename $@` install destination=$(GOBIN)" 1>&2
-	CGO_ENABLED=0 $(GO_CMD) install golang.org/x/tools/cmd/stringer@v0.1.5
+	CGO_ENABLED=0 $(GO_CMD) install golang.org/x/tools/cmd/stringer@v0.21.0
+
 
 .PHONY: gen
 TMP_PATH := $(DIR_BIN):$(PATH)
 gen: export PATH=$(TMP_PATH)
 gen: tools
-	$(GO_CMD) generate `$(GO_CMD) list ./...`
+	$(GO_CMD) generate ./...
 	@echo "$@ done." 1>&2
 
 go-split: cmd/go-split/* $(SRCS_OTHER)

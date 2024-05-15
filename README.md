@@ -23,7 +23,7 @@ Usage: go-split [options] input-file...
 
 ## Requirements
 
-* Go 1.15
+* Go 1.22
 * GNU Make
 
 ## Prerequisites
@@ -48,6 +48,6 @@ SEE LICENSE
 
 # My Environment
 
-* CentOS 8.3.2011
-* Go 1.15.11
-* GNU Make 4.2.1
+* CentOS Stream 9
+* Go 1.22.1
+* GNU Make 4.3

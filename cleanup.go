@@ -1,8 +1,12 @@
 package split
 
-import "sync"
+import (
+	"sync"
 
-type cleanupFunc func()
+	"github.com/hashicorp/go-multierror"
+)
+
+type cleanupFunc func() error
 
 type cleanups struct {
 	funcs []cleanupFunc
@@ -13,10 +17,11 @@ func (c *cleanups) add(f cleanupFunc) {
 	c.funcs = append(c.funcs, f)
 }
 
-func (c *cleanups) do() {
+func (c *cleanups) do() (err error) {
 	c.once.Do(func() {
-		for _, f := range c.funcs {
-			defer f()
+		for i := len(c.funcs) - 1; i >= 0; i-- {
+			err = multierror.Append(err, c.funcs[i]())
 		}
 	})
+	return err
 }

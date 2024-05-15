@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -15,14 +14,14 @@ import (
 
 type serviceMock struct {
 	mockCreateWriter func(fn string, compress string) (io.Writer, cleanupFunc, error)
-	mockCreateReader func(fn string) (io.Reader, cleanupFunc, error)
+	mockCreateReader func(fn string) (io.ReadCloser, error)
 	mockMkdirAll     func(path string, perm os.FileMode) error
 }
 
 func (m *serviceMock) createWriter(fn string, compress string) (io.Writer, cleanupFunc, error) {
 	return m.mockCreateWriter(fn, compress)
 }
-func (m *serviceMock) createReader(fn string) (io.Reader, cleanupFunc, error) {
+func (m *serviceMock) createReader(fn string) (io.ReadCloser, error) {
 	return m.mockCreateReader(fn)
 }
 func (m *serviceMock) mkdirAll(path string, perm os.FileMode) error {
@@ -45,12 +44,12 @@ func TestSplit1(t *testing.T) {
 			assert.Equal(t, "out", path)
 			return nil
 		},
-		mockCreateReader: func(fn string) (io.Reader, cleanupFunc, error) {
+		mockCreateReader: func(fn string) (io.ReadCloser, error) {
 			assert.Equal(t, "in/file0", fn)
-			return strings.NewReader(`line1
+			return io.NopCloser(strings.NewReader(`line1
 line2
 line3
-`), nop, nil
+`)), nil
 		},
 		mockCreateWriter: func(fn string, compress string) (io.Writer, cleanupFunc, error) {
 			assert.Equal(t, "out/file-000", fn)
@@ -90,12 +89,12 @@ func TestSplit2(t *testing.T) {
 			assert.Equal(t, "out", path)
 			return nil
 		},
-		mockCreateReader: func(fn string) (io.Reader, cleanupFunc, error) {
+		mockCreateReader: func(fn string) (io.ReadCloser, error) {
 			assert.Equal(t, "in/file0", fn)
-			return strings.NewReader(`line1
+			return io.NopCloser(strings.NewReader(`line1
 line2
 line3
-`), nop, nil
+`)), nil
 		},
 		mockCreateWriter: func(fn string, compress string) (io.Writer, cleanupFunc, error) {
 			assert.Equal(t, "out/file-000.gz", fn)
@@ -120,31 +119,14 @@ in/file0, total=3
 `, stderr.String())
 }
 
-func TestOpenInput1(t *testing.T) {
-	r, cleanup, err := openInput("/dev/null")
-	assert.Nil(t, err)
-	defer cleanup()
-	_, ok := r.(*os.File)
-	assert.True(t, ok)
-}
-
-func TestOpenInput2(t *testing.T) {
-	r, cleanup, err := openInput("-")
-	assert.Nil(t, err)
-	defer cleanup()
-	assert.True(t, os.Stdin == r)
-}
-
 func TestDecorateReaderNoCompression(t *testing.T) {
-	r, cleanup, err := openInput("-")
+	r, err := os.Open("/dev/stdin")
 	assert.Nil(t, err)
-	defer cleanup()
+	defer r.Close()
 
-	reader, cleanup, err := decorateReader("plain.txt", r)
+	reader, err := decorateReader("plain.txt", r)
 	assert.Nil(t, err)
-	defer cleanup()
-
-	assert.True(t, r == reader)
+	defer reader.Close()
 }
 
 func TestDecorateReaderGzip(t *testing.T) {
@@ -156,14 +138,14 @@ func TestDecorateReaderGzip(t *testing.T) {
 
 	r := bytes.NewReader(buf.Bytes())
 
-	reader, cleanup, err := decorateReader("path/to/some.tsv.gz", r)
+	reader, err := decorateReader("path/to/some.tsv.gz", r)
 	assert.Nil(t, err)
-	defer cleanup()
+	defer reader.Close()
 
 	_, ok := reader.(*gzip.Reader)
 	assert.True(t, ok)
 
-	content, err := ioutil.ReadAll(reader)
+	content, err := io.ReadAll(reader)
 	assert.Nil(t, err)
 	assert.Equal(t, "aaa", string(content))
 

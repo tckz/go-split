@@ -19,8 +19,9 @@ func TestCleanup1(t *testing.T) {
 	cleanups := &cleanups{}
 
 	called := []string{}
-	cleanups.add(func() {
+	cleanups.add(func() error {
 		called = append(called, "call1")
+		return nil
 	})
 
 	cleanups.do()
@@ -33,16 +34,19 @@ func TestCleanup3(t *testing.T) {
 
 	called := []string{}
 
-	cleanups.add(func() {
+	cleanups.add(func() error {
 		called = append(called, "call1")
+		return nil
 	})
 
-	cleanups.add(func() {
+	cleanups.add(func() error {
 		called = append(called, "call2")
+		return nil
 	})
 
-	cleanups.add(func() {
+	cleanups.add(func() error {
 		called = append(called, "call3")
+		return nil
 	})
 
 	cleanups.do()
